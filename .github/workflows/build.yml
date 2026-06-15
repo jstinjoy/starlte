@@ -18,8 +18,10 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
             bc bison flex libssl-dev libncurses-dev build-essential \
-            libelf-dev zip git ca-certificates wget python3 kmod cpio rsync \
+            libelf-dev zip git ca-certificates wget python3 kmod cpio rsync file \
             libc6-i386 lib32stdc++6 lib32z1
+          DEBIAN_FRONTEND=noninteractive apt-get install -y python2
+          ln -sf /usr/bin/python2 /usr/bin/python
           DEBIAN_FRONTEND=noninteractive apt-get install -y libtinfo5 || true
 
       - name: Checkout kernel
