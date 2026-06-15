@@ -1,0 +1,65 @@
+name: build-kernel
+on:
+  push:
+    branches: [ "tw10-android-4.9-q-stock", "resukisu-star2lte" ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build deps
+        run: |
+          set -eux
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            bc bison flex libssl-dev libncurses-dev build-essential \
+            libelf-dev zip git ca-certificates wget python3 kmod cpio rsync file \
+            libc6-i386 lib32stdc++6 lib32z1
+          DEBIAN_FRONTEND=noninteractive apt-get install -y python2
+          ln -sf /usr/bin/python2 /usr/bin/python
+          DEBIAN_FRONTEND=noninteractive apt-get install -y libtinfo5 || true
+
+      - name: Checkout kernel
+        uses: actions/checkout@v4
+
+      - name: Fetch GCC 4.9 toolchains (Google prebuilts)
+        run: |
+          set -euxo pipefail
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
+          echo "--- toolchain sanity ---"
+          ls -la gcc64/bin | head
+          file gcc64/bin/aarch64-linux-android-gcc || true
+          ./gcc64/bin/aarch64-linux-android-gcc --version
+
+      - name: Build kernel
+        run: |
+          set -euxo pipefail
+          export ARCH=arm64
+          export ANDROID_MAJOR_VERSION=q
+          export CROSS_COMPILE="$GITHUB_WORKSPACE/gcc64/bin/aarch64-linux-android-"
+          export CROSS_COMPILE_ARM32="$GITHUB_WORKSPACE/gcc32/bin/arm-linux-androideabi-"
+          export KBUILD_BUILD_USER=ci
+          export KBUILD_BUILD_HOST=resukisu
+          make HOSTCFLAGS="-fcommon -w -O2" exynos9810-star2lte_defconfig
+          make -j"$(nproc)" HOSTCFLAGS="-fcommon -w -O2" Image 2>&1 | tee build.log
+
+      - name: List build output
+        if: always()
+        run: ls -la arch/arm64/boot/ 2>/dev/null || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-bare
+          path: |
+            arch/arm64/boot/Image
+            arch/arm64/boot/Image.gz
+            build.log
+          if-no-files-found: warn

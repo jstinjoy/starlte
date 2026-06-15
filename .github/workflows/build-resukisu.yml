@@ -1,0 +1,83 @@
+name: build-resukisu
+on:
+  push:
+    branches: [ "resukisu-star2lte" ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build deps
+        run: |
+          set -eux
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            bc bison flex libssl-dev libncurses-dev build-essential \
+            libelf-dev zip git ca-certificates wget python3 kmod cpio rsync curl file \
+            libc6-i386 lib32stdc++6 lib32z1
+          DEBIAN_FRONTEND=noninteractive apt-get install -y python2
+          ln -sf /usr/bin/python2 /usr/bin/python
+          DEBIAN_FRONTEND=noninteractive apt-get install -y libtinfo5 || true
+
+      - name: Checkout kernel
+        uses: actions/checkout@v4
+
+      - name: Fetch GCC 4.9 toolchains (LineageOS mirrors)
+        run: |
+          set -euxo pipefail
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
+          ./gcc64/bin/aarch64-linux-android-gcc --version
+
+      - name: Integrate ReSukiSU driver
+        run: |
+          set -euxo pipefail
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+          echo "--- verify driver wiring ---"
+          ls -la drivers/kernelsu
+          grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig && echo "Kconfig wired"
+          grep -q "kernelsu" drivers/Makefile && echo "Makefile wired"
+
+      - name: Integrate SUSFS (kernel-4.9)
+        run: |
+          set -euxo pipefail
+          git clone --depth=1 -b kernel-4.9 https://gitlab.com/simonpunk/susfs4ksu.git susfs
+          cp susfs/kernel_patches/fs/susfs.c fs/
+          cp susfs/kernel_patches/fs/sus_su.c fs/
+          patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.9.patch
+
+      - name: Build kernel
+        run: |
+          set -euxo pipefail
+          export ARCH=arm64
+          export ANDROID_MAJOR_VERSION=q
+          export CROSS_COMPILE="$GITHUB_WORKSPACE/gcc64/bin/aarch64-linux-android-"
+          export CROSS_COMPILE_ARM32="$GITHUB_WORKSPACE/gcc32/bin/arm-linux-androideabi-"
+          export KBUILD_BUILD_USER=ci
+          export KBUILD_BUILD_HOST=resukisu
+          make HOSTCFLAGS="-fcommon -w -O2" exynos9810-star2lte_defconfig
+          cat arch/arm64/configs/resukisu.fragment >> .config
+          make HOSTCFLAGS="-fcommon -w -O2" olddefconfig
+          echo "--- KSU/SUSFS config check ---"
+          grep -E "CONFIG_KSU=|CONFIG_KSU_SUSFS=|CONFIG_KSU_MANUAL_HOOK=|CONFIG_KALLSYMS_ALL=|CONFIG_OVERLAY_FS=" .config || true
+          make -j"$(nproc)" HOSTCFLAGS="-fcommon -w -O2" Image 2>&1 | tee build.log
+
+      - name: List build output
+        if: always()
+        run: ls -la arch/arm64/boot/ 2>/dev/null || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-resukisu
+          path: |
+            arch/arm64/boot/Image
+            arch/arm64/boot/Image.gz
+            build.log
+          if-no-files-found: warn
