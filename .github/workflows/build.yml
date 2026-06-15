@@ -28,8 +28,8 @@ jobs:
       - name: Fetch GCC 4.9 toolchains (Google prebuilts)
         run: |
           set -euxo pipefail
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc32
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
           echo "--- toolchain sanity ---"
           ls -la gcc64/bin | head
           file gcc64/bin/aarch64-linux-android-gcc || true
