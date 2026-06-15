@@ -46,8 +46,8 @@ jobs:
           export CROSS_COMPILE_ARM32="$GITHUB_WORKSPACE/gcc32/bin/arm-linux-androideabi-"
           export KBUILD_BUILD_USER=ci
           export KBUILD_BUILD_HOST=resukisu
-          make exynos9810-star2lte_defconfig
-          make -j"$(nproc)" Image 2>&1 | tee build.log
+          make HOSTCFLAGS="-fcommon -w -O2" exynos9810-star2lte_defconfig
+          make -j"$(nproc)" HOSTCFLAGS="-fcommon -w -O2" Image 2>&1 | tee build.log
 
       - name: List build output
         if: always()
